@@ -1,0 +1,22 @@
+{
+  "manifest_version": 4,
+  "name": "CoachCat Zone Summary",
+  "version": "1.4",
+  "description": "Adds weekly zone distribution summary to CoachCat",
+  "permissions": ["storage"],
+  "host_permissions": ["https://api.fascatapi.com/*", "https://app.fascat.ai/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://app.fascat.ai/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js"],
+      "matches": ["https://app.fascat.ai/*"]
+    }
+  ]
+}
