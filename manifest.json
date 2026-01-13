@@ -1,7 +1,7 @@
 {
-  "manifest_version": 4,
+  "manifest_version": 3,
   "name": "CoachCat Zone Summary",
-  "version": "1.4",
+  "version": "1.5",
   "description": "Adds weekly zone distribution summary to CoachCat",
   "permissions": ["storage"],
   "host_permissions": ["https://api.fascatapi.com/*", "https://app.fascat.ai/*"],

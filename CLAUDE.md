@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Chrome extension (Manifest V4) that adds a weekly power zone distribution panel to the CoachCat cycling training app (app.fascat.ai). The extension fetches the user's training data and FTP from the FasCat API and displays time-in-zone statistics.
+Chrome extension (Manifest V3) that adds a weekly power zone distribution panel to the CoachCat cycling training app (app.fascat.ai). The extension fetches the user's training data and FTP from the FasCat API and displays time-in-zone statistics.
 
 ## Development
 
