@@ -1,5 +1,4 @@
 (function() {
-  // Zone percentages based on FTP (these match what CoachCat uses)
   const ZONE_CONFIG = [
     { id: '1', name: 'Active Recovery', color: '#9CA3AF', abbrev: '1', minPct: 0, maxPct: 0.59 },
     { id: '2', name: 'Endurance', color: '#3B82F6', abbrev: '2', minPct: 0.59, maxPct: 0.75 },
@@ -12,6 +11,8 @@
   ];
 
   let userFTP = null;
+  let currentWeekStart = null;
+  let authToken = null;
 
   function formatTime(seconds) {
     const hours = Math.floor(seconds / 3600);
@@ -36,6 +37,23 @@
     }
   }
 
+  function formatWeekLabel(weekStart) {
+    const start = new Date(weekStart + 'T00:00:00');
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+
+    const opts = { month: 'short', day: 'numeric' };
+    return `${start.toLocaleDateString('en-US', opts)} - ${end.toLocaleDateString('en-US', opts)}`;
+  }
+
+  function getWeekStartForDate(date) {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().split('T')[0];
+  }
+
   function processZoneData(data) {
     const zoneTotals = { '1': 0, '2': 0, '3': 0, 'ss': 0, '4': 0, '5': 0, '6': 0, '7': 0 };
 
@@ -55,7 +73,7 @@
     return zoneTotals;
   }
 
-  function createZonePanel(zoneTotals) {
+  function createZonePanel(zoneTotals, weekLabel) {
     let panel = document.getElementById('coachcat-zone-panel');
     if (panel) panel.remove();
 
@@ -70,6 +88,7 @@
         <span class="zone-total-badge">Total: ${formatTime(totalSeconds)}</span>
         <button class="zone-close-btn" id="zone-close-btn">×</button>
       </div>
+      <div class="zone-week-label">${weekLabel}</div>
       <div class="zone-list">
         ${ZONE_CONFIG.map(zone => {
           const seconds = zoneTotals[zone.id] || 0;
@@ -144,27 +163,27 @@
     }
   }
 
-  async function fetchAndDisplay() {
+  async function fetchForWeek(weekStart) {
     try {
-      const token = await getFirebaseToken();
-      console.log('CoachCat Extension - Got auth token');
+      if (!authToken) {
+        authToken = await getFirebaseToken();
+        await fetchThreshold(authToken);
+      }
 
-      // Fetch FTP first
-      await fetchThreshold(token);
-
-      // Then fetch zone data
-      const today = new Date();
-      const weekStart = new Date(today);
-      const day = today.getDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      weekStart.setDate(today.getDate() + diff);
+      currentWeekStart = weekStart;
+      const weekEnd = new Date(weekStart + 'T00:00:00');
+      weekEnd.setDate(weekEnd.getDate() + 6);
 
       const formatDate = (d) => d.toISOString().split('T')[0];
-      const url = `https://api.fascatapi.com/app/v1/training/report/tiz-weekly?weekStart=${formatDate(weekStart)}&today=${formatDate(today)}`;
+      const today = new Date();
+      const endDate = weekEnd > today ? today : weekEnd;
+
+      const url = `https://api.fascatapi.com/app/v1/training/report/tiz-weekly?weekStart=${weekStart}&today=${formatDate(endDate)}`;
+      console.log('CoachCat Extension - Fetching:', url);
 
       const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${authToken}`,
           'Accept': 'application/json'
         }
       });
@@ -175,13 +194,61 @@
 
       const data = await response.json();
       const zoneTotals = processZoneData(data);
-      createZonePanel(zoneTotals);
+      const weekLabel = formatWeekLabel(weekStart);
+      createZonePanel(zoneTotals, weekLabel);
 
     } catch (err) {
       console.error('CoachCat Extension - Error:', err);
     }
   }
 
+  async function fetchAndDisplay() {
+    const today = new Date();
+    const weekStart = getWeekStartForDate(today);
+    await fetchForWeek(weekStart);
+  }
+
+  // Track last seen week from app's requests using PerformanceObserver
+  let lastAppWeek = null;
+
+  function setupNetworkObserver() {
+    // Use PerformanceObserver to detect network requests
+    if (window.PerformanceObserver) {
+      const observer = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.name.includes('tiz-weekly') && entry.name.includes('fascatapi.com')) {
+            const weekMatch = entry.name.match(/weekStart=(\d{4}-\d{2}-\d{2})/);
+            if (weekMatch) {
+              const appWeek = weekMatch[1];
+              if (appWeek !== lastAppWeek) {
+                lastAppWeek = appWeek;
+                console.log('CoachCat Extension - App viewing week:', appWeek);
+                // Update our panel if it differs from current
+                if (appWeek !== currentWeekStart) {
+                  setTimeout(() => fetchForWeek(appWeek), 300);
+                }
+              }
+            }
+          }
+        }
+      });
+
+      try {
+        observer.observe({ entryTypes: ['resource'] });
+        console.log('CoachCat Extension - Network observer started');
+      } catch (e) {
+        console.log('CoachCat Extension - Network observer not available');
+      }
+    }
+  }
+
   window.__coachcatFetchZones = fetchAndDisplay;
-  setTimeout(fetchAndDisplay, 2000);
+  window.__coachcatFetchForWeek = fetchForWeek;
+
+  // Start network observer to track app's week selection
+  setupNetworkObserver();
+
+  setTimeout(() => {
+    fetchAndDisplay();
+  }, 2000);
 })();
